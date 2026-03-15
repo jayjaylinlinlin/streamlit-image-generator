@@ -89,6 +89,8 @@ if "generated_images" not in st.session_state:
     st.session_state.generated_images = []
 if "current_step" not in st.session_state:
     st.session_state.current_step = 1
+if "characters" not in st.session_state:
+    st.session_state.characters = []
 
 # ============================================================================
 # SIDEBAR CONFIG
@@ -127,6 +129,47 @@ with st.sidebar:
     chars_per_second = LANGUAGE_CONFIG[selected_language]["chars_per_second"]
     chars_per_cut = int(cut_duration * chars_per_second)
     st.info(f"📏 {selected_language} 기준: 초당 {chars_per_second}글자 → 컷당 약 {chars_per_cut}글자")
+
+    st.divider()
+
+    # 캐릭터 설정
+    st.subheader("👤 캐릭터 설정")
+    st.caption("대본에 등장하는 캐릭터를 정의하세요. 이미지 생성 시 반영됩니다.")
+
+    num_characters = st.number_input(
+        "캐릭터 수",
+        min_value=0,
+        max_value=10,
+        value=len(st.session_state.characters),
+        step=1,
+    )
+
+    # 캐릭터 수에 맞게 리스트 조정
+    while len(st.session_state.characters) < num_characters:
+        st.session_state.characters.append({"name": "", "appearance": "", "color": "#FF0000"})
+    while len(st.session_state.characters) > num_characters:
+        st.session_state.characters.pop()
+
+    for i in range(num_characters):
+        with st.expander(f"캐릭터 {i + 1}: {st.session_state.characters[i]['name'] or '미정'}", expanded=True):
+            st.session_state.characters[i]["name"] = st.text_input(
+                "이름",
+                value=st.session_state.characters[i]["name"],
+                key=f"char_name_{i}",
+                placeholder="예: 철수, 영희, 사장님",
+            )
+            st.session_state.characters[i]["color"] = st.color_picker(
+                "대표 색상",
+                value=st.session_state.characters[i]["color"],
+                key=f"char_color_{i}",
+            )
+            st.session_state.characters[i]["appearance"] = st.text_area(
+                "외형 특징",
+                value=st.session_state.characters[i]["appearance"],
+                key=f"char_appearance_{i}",
+                height=80,
+                placeholder="예: 안경 착용, 넥타이, 긴 머리, 모자 등",
+            )
 
     st.divider()
 
@@ -199,7 +242,7 @@ with col1:
 4. 장면 전환 포인트"""
 
                     response = client.models.generate_content(
-                        model="gemini-2.0-flash",
+                        model="gemini-2.5-flash",
                         contents=analysis_prompt,
                     )
 
@@ -313,12 +356,29 @@ if st.session_state.current_step >= 3 and st.session_state.segments:
                 for idx, segment in enumerate(st.session_state.segments):
                     status_text.text(f"프롬프트 생성 중... ({idx + 1}/{len(st.session_state.segments)})")
 
+                    # 캐릭터 정보 구성
+                    character_info = ""
+                    if st.session_state.characters:
+                        char_lines = []
+                        for c in st.session_state.characters:
+                            if c["name"]:
+                                desc = f"- {c['name']}: color={c['color']}"
+                                if c["appearance"]:
+                                    desc += f", {c['appearance']}"
+                                char_lines.append(desc)
+                        if char_lines:
+                            character_info = f"""
+등장 캐릭터 정보 (각 캐릭터를 아래 외형으로 구분하여 묘사하세요):
+{chr(10).join(char_lines)}
+"""
+
                     prompt_gen_instruction = f"""{style_guide}
 
 프롬프트 템플릿:
 {prompt_template}
-
+{character_info}
 위의 스타일 가이드와 템플릿을 엄격히 따라서, 다음 대본 세그먼트에 맞는 이미지 프롬프트를 생성하세요.
+캐릭터가 정의된 경우, 해당 캐릭터의 색상과 외형 특징을 프롬프트에 반드시 포함하세요.
 
 대본: "{segment}"
 
@@ -326,7 +386,7 @@ if st.session_state.current_step >= 3 and st.session_state.segments:
 Upgraded stick-man 2D with thick black outline, pure white faces, single hard cel shading, thicker torso and neck, flat matte colors; SCENE: [구체적인 장면 묘사를 영문으로 작성, no text or letters anywhere]"""
 
                     response = client.models.generate_content(
-                        model="gemini-2.0-flash",
+                        model="gemini-2.5-flash",
                         contents=prompt_gen_instruction,
                     )
 
